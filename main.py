@@ -3,12 +3,13 @@ import os
 import matplotlib.pyplot as plt
 import statistics
 import scipy.stats as st
+from operator import itemgetter
 
 
 class ReadFile:
     def __init__(self):
 
-        if (os.path.exists('cleanedCVS.csv')):
+        if os.path.exists('cleanedCVS.csv'):
             self.fileName = "cleanedCVS.csv"
         else:
             self.fileName = "GRADDAGE_TAL.csv"
@@ -18,6 +19,8 @@ class ReadFile:
         self.header = []
         self.stationList = {}
         self.dates = {}
+        self.countryMeans = 0
+        self.average = 0
 
     def main(self):
         self.openFile()
@@ -26,6 +29,7 @@ class ReadFile:
         self.plot()
         self.countryMean()
         self.calculateMean()
+        self.sameAmountOfData()
 
     def openFile(self):
         self.file = open(self.fileName, 'r')
@@ -42,7 +46,7 @@ class ReadFile:
     def cleanFile(self):
 
         for row in list(self.rows):
-            if row[2] == '0' or float(row[2]) > 25:
+            if float(row[2]) < 1 or float(row[2]) > 25:
                 self.rows.remove(row)
 
             keys = self.stationList.keys()
@@ -125,21 +129,29 @@ class ReadFile:
             meanOfMeans.append(mean[1])
 
         print("--------------")
-        print(highest)
-        print(lowest)
-        print(statistics.quantiles(meanOfMeans))
-        print([statistics.mean(meanOfMeans)])
+        print('Higest: ', highest)
+        print('Lowest: ', lowest)
+        print('Quantiles: ', statistics.quantiles(meanOfMeans))
+        self.average = statistics.mean(meanOfMeans)
+        print('Average for observations: ', self.average)
 
-        b = st.t.interval(alpha=0.95, df=len(meanOfMeans) - 1,
-                          loc=statistics.mean(meanOfMeans), scale=st.sem(meanOfMeans))
-        print(b)
+        CInterval = st.t.interval(alpha=0.95, df=len(meanOfMeans) - 1,
+                                  loc=statistics.mean(meanOfMeans), scale=st.sem(meanOfMeans))
+        print('95% confident interval: ', CInterval)
 
-        print(st.normaltest(meanOfMeans))
-        print(st.ttest_1samp(meanOfMeans, 0.0))
-        print(statistics.stdev(meanOfMeans))
+        print(st.normaltest(meanOfMeans))  # følger ikke normalfordeling
+        print(st.ttest_1samp(meanOfMeans,
+                             self.countryMeans))  # h0: meansofMeans == countrymeans, p-værdi > alfa -> kan ikke forkastes
+        print('Standard deviation: ', statistics.stdev(meanOfMeans))
 
         plt.boxplot(meanOfMeans)
         plt.show()
+
+        means.append(["Average", statistics.mean(meanOfMeans)])
+
+        means.append(["C_average", self.countryMeans])
+
+        means.sort(key=itemgetter(1))
 
         x = []
         y = []
@@ -147,14 +159,8 @@ class ReadFile:
             x.append(mean[0])
             y.append(mean[1])
 
-        y.append(statistics.mean(meanOfMeans))
-        x.append("gennemsnit")
-
         plt.barh(x, y)
         plt.show()
-
-        # plt.boxplot(meanOfMeans)
-        # plt.show()
 
     def countryMean(self):
 
@@ -167,9 +173,44 @@ class ReadFile:
 
             means.append(statistics.mean(numbers))
 
-        print(statistics.mean(means))
+        self.countryMeans = statistics.mean(means)
 
         plt.hist(means)
+        plt.show()
+
+    def sameAmountOfData(self):
+        size = 11000
+        plotData = []
+        x = []
+        y = []
+
+        for key in self.stationList.keys():
+            dataLength = len(self.stationList[key])
+
+            if dataLength < 10000:
+                continue
+
+            if dataLength != size:
+                if dataLength > size:
+                    plotData.append(
+                        [key, float(self.stationList[key][dataLength - 1][2]) - (dataLength - size) * self.average])
+
+                else:
+                    plotData.append(
+                        [key, float(self.stationList[key][dataLength - 1][2]) + (size - dataLength) * self.average])
+            else:
+                plotData.append([key, self.stationList[key][dataLength - 1][2]])
+
+        plotData.sort(key=itemgetter(1))
+
+        for data in plotData:
+            x.append(data[0])
+            y.append(data[1])
+
+        plt.barh(x, y)
+        plt.show()
+
+        plt.boxplot(y)
         plt.show()
 
 
