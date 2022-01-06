@@ -21,6 +21,7 @@ class ReadFile:
         self.dates = {}
         self.countryMeans = 0
         self.average = 0
+        self.means = []
 
     def main(self):
         self.openFile()
@@ -46,7 +47,7 @@ class ReadFile:
     def cleanFile(self):
 
         for row in list(self.rows):
-            if float(row[2]) < 1 or float(row[2]) > 25:
+            if float(row[2]) < 1 or float(row[2]) > 27:
                 self.rows.remove(row)
 
             keys = self.stationList.keys()
@@ -104,7 +105,7 @@ class ReadFile:
 
     def calculateMean(self):
         keys = self.stationList.keys()
-        means = []
+        self.means = []
 
         for key in keys:
             values = []
@@ -113,13 +114,13 @@ class ReadFile:
 
             for item in self.stationList[key]:
                 values.append(float(item[1]))
-            means.append([key, statistics.mean(values)])
+            self.means.append([key, statistics.mean(values)])
 
         meanOfMeans = []
 
         highest = [0, 0]
         lowest = [0, 100000]
-        for mean in means:
+        for mean in self.means:
             if mean[1] > highest[1]:
                 highest = mean
 
@@ -139,28 +140,30 @@ class ReadFile:
                                   loc=statistics.mean(meanOfMeans), scale=st.sem(meanOfMeans))
         print('95% confident interval: ', CInterval)
 
-        print(st.normaltest(meanOfMeans))  # følger ikke normalfordeling
         print(st.ttest_1samp(meanOfMeans,
-                             self.countryMeans))  # h0: meansofMeans == countrymeans, p-værdi > alfa -> kan ikke forkastes
+                             self.countryMeans))
         print('Standard deviation: ', statistics.stdev(meanOfMeans))
 
         plt.boxplot(meanOfMeans)
         plt.show()
 
-        means.append(["Average", statistics.mean(meanOfMeans)])
+        self.means.append(["Average", statistics.mean(meanOfMeans)])
 
-        means.append(["C_average", self.countryMeans])
+        self.means.append(["Country", self.countryMeans])
 
-        means.sort(key=itemgetter(1))
+        self.means.sort(key=itemgetter(1))
 
         x = []
         y = []
-        for mean in means:
+        for mean in self.means:
             x.append(mean[0])
             y.append(mean[1])
 
         plt.barh(x, y)
         plt.show()
+
+        print('Right and left side of the critical value: [', st.t.ppf(0.025, 31), ',',
+              st.t.ppf(0.975, 31), ']')
 
     def countryMean(self):
 
@@ -175,11 +178,16 @@ class ReadFile:
 
         self.countryMeans = statistics.mean(means)
 
+        print(self.countryMeans)
+        print(len(means))
+        print('Standard deviation: ', statistics.stdev(means))
+        print('Quantiles: ', statistics.quantiles(means))
+
         plt.hist(means)
         plt.show()
 
     def sameAmountOfData(self):
-        size = 11000
+        size = 10640
         plotData = []
         x = []
         y = []
@@ -191,13 +199,18 @@ class ReadFile:
                 continue
 
             if dataLength != size:
+                mean = 0
+                for item in self.means:
+                    if item[0] == key:
+                        mean = item[1]
+                        break
+
                 if dataLength > size:
                     plotData.append(
-                        [key, float(self.stationList[key][dataLength - 1][2]) - (dataLength - size) * self.average])
-
+                        [key, float(self.stationList[key][dataLength - 1][2]) - (dataLength - size) * mean])
                 else:
                     plotData.append(
-                        [key, float(self.stationList[key][dataLength - 1][2]) + (size - dataLength) * self.average])
+                        [key, float(self.stationList[key][dataLength - 1][2]) + (size - dataLength) * mean])
             else:
                 plotData.append([key, self.stationList[key][dataLength - 1][2]])
 
