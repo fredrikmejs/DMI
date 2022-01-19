@@ -6,57 +6,83 @@ import scipy.stats as st
 from operator import itemgetter
 
 
-class ReadFile:
+class AnalyzeDMI:
     def __init__(self):
 
-        if os.path.exists('cleanedCVS.csv'):
-            self.fileName = "cleanedCVS.csv"
-        else:
-            self.fileName = "GRADDAGE_TAL.csv"
-
-        self.file = None
         self.rows = []
-        self.header = []
         self.stationList = {}
         self.dates = {}
         self.countryMeans = 0
-        self.average = 0
         self.means = []
+
+    '''
+    A function to control the flow of the program
+    '''
 
     def main(self):
         self.openFile()
         self.cleanFile()
-        self.createNewCVS()
         self.plot()
         self.countryMean()
-        self.calculateMean()
+        self.hypothesisTestData()
         self.sameAmountOfData()
 
-    def openFile(self):
-        self.file = open(self.fileName, 'r')
-        type(self.file)
+    '''
+    Opens the file cleanedCVS.cvs or GRADDAGE_TAL.cvs
+    '''
 
-        csvreader = csv.reader(self.file)
-        self.header = next(csvreader)
+    def openFile(self):
+        # Checks if it should use the cleaned file or not
+        if os.path.exists('cleanedCVS.csv'):
+            fileName = "cleanedCVS.csv"
+        else:
+            fileName = "GRADDAGE_TAL.csv"
+
+        file = open(fileName, 'r')
+
+        csvreader = csv.reader(file)
+        header = next(csvreader)
 
         for row in csvreader:
             self.rows.append(row)
 
-        self.file.close()
+        file.close()
+        self.createNewCVS(header)
+
+    '''
+    Create a new CVS file which will make it faster to load the program 
+    the next time you are running it 
+    '''
+
+    def createNewCVS(self, header):
+        with open('cleanedCVS.csv', 'w', encoding='UTF8') as newCVS:
+            writer = csv.writer(newCVS)
+
+            writer.writerow(header)
+            writer.writerows(self.rows)
+
+            print('file created\n')
+            newCVS.close()
+
+    '''
+    Cleans the file for outliners and set the values 
+    stationList and dates
+    '''
 
     def cleanFile(self):
-
         for row in list(self.rows):
             if float(row[2]) < 1 or float(row[2]) > 27:
                 self.rows.remove(row)
 
             keys = self.stationList.keys()
 
+            # Creates a Map structure for the stations '[stationId] = [date, degree_day, Sigma(degree_day)]'
             if keys.__contains__(row[0]):
                 self.stationList[row[0]].append([row[5], row[2], row[3]])
             else:
                 self.stationList[row[0]] = [[row[5], row[2], row[3]]]
 
+            # Creates the Map of the different dates '[date] = [station, degree_day]'
             if self.dates.keys().__contains__(row[5]):
                 self.dates[row[5]].append([row[0], float(row[2])])
             else:
@@ -70,21 +96,13 @@ class ReadFile:
         for item in keysToRemove:
             self.dates.pop(item)
 
-    def createNewCVS(self):
-        with open('cleanedCVS.csv', 'w', encoding='UTF8') as newCVS:
-            writer = csv.writer(newCVS)
-
-            writer.writerow(self.header)
-            writer.writerows(self.rows)
-
-            print('file created')
-            newCVS.close()
+    '''
+    Plots the accumulated for all the stations
+    '''
 
     def plot(self):
 
-        keys = self.stationList.keys()
-
-        for key in keys:
+        for key in self.stationList.keys():
             x = []
             y = []
 
@@ -98,16 +116,19 @@ class ReadFile:
 
         plt.xscale('linear')
         plt.yscale('linear')
-        plt.xlabel('Dato')
-        plt.ylabel('Akkumuleret graddage')
+        plt.xlabel('åååå-måned-dag')
+        plt.ylabel('Akkumuleret graddage', labelpad=0)
         plt.grid(True)
         plt.show()
 
+    '''
+    Calculates the mean of each station where there are at least 10.000 observations
+    '''
+
     def calculateMean(self):
-        keys = self.stationList.keys()
         self.means = []
 
-        for key in keys:
+        for key in self.stationList.keys():
             values = []
             if len(self.stationList[key]) < 10000:
                 continue
@@ -118,6 +139,7 @@ class ReadFile:
 
         meanOfMeans = []
 
+        # Show the highest and lowest values to compare differences
         highest = [0, 0]
         lowest = [0, 100000]
         for mean in self.means:
@@ -129,26 +151,36 @@ class ReadFile:
 
             meanOfMeans.append(mean[1])
 
+        return meanOfMeans, highest, lowest
+
+    '''
+    Prints values needed to conclude on the hypothesis
+    '''
+
+    def hypothesisTestData(self):
+
+        meanOfMeans, highest, lowest = self.calculateMean()
+
         print("--------------")
-        print('Higest: ', highest)
+        print('General observations for the dataset')
+        print('Highest: ', highest)
         print('Lowest: ', lowest)
         print('Quantiles: ', statistics.quantiles(meanOfMeans))
-        self.average = statistics.mean(meanOfMeans)
-        print('Average for observations: ', self.average)
+        print('Average for observations: ', statistics.mean(meanOfMeans))
 
+        # Calculates the 95% confident interval
         CInterval = st.t.interval(alpha=0.95, df=len(meanOfMeans) - 1,
                                   loc=statistics.mean(meanOfMeans), scale=st.sem(meanOfMeans))
         print('95% confident interval: ', CInterval)
 
-        print(st.ttest_1samp(meanOfMeans,
-                             self.countryMeans))
-        print('Standard deviation: ', statistics.stdev(meanOfMeans))
+        print('T-test for 1sample: ', st.ttest_1samp(meanOfMeans,
+                                                     self.countryMeans))
+        print('Standard deviation for the means of the stations: ', statistics.stdev(meanOfMeans))
 
         plt.boxplot(meanOfMeans)
         plt.show()
 
         self.means.append(["Average", statistics.mean(meanOfMeans)])
-
         self.means.append(["Country", self.countryMeans])
 
         self.means.sort(key=itemgetter(1))
@@ -159,14 +191,20 @@ class ReadFile:
             x.append(mean[0])
             y.append(mean[1])
 
+        plt.xlabel('Average')
+        plt.ylabel('StationID', loc='top', labelpad=-2.0)
         plt.barh(x, y)
         plt.show()
 
         print('Right and left side of the critical value: [', st.t.ppf(0.025, 31), ',',
               st.t.ppf(0.975, 31), ']')
 
-    def countryMean(self):
+    '''
+    Function to calculate the mean for the Country
+    This is done by calculating the daily average
+    '''
 
+    def countryMean(self):
         means = []
         for key in self.dates.keys():
             numbers = []
@@ -178,13 +216,19 @@ class ReadFile:
 
         self.countryMeans = statistics.mean(means)
 
-        print(self.countryMeans)
-        print(len(means))
-        print('Standard deviation: ', statistics.stdev(means))
+        print('Attributes for Country averages ')
+        print('Mean for the country %2f' % self.countryMeans)
+        print('Amount of days with observations %d' % len(means))
+        print('Standard deviation: %2f' % statistics.stdev(means))
         print('Quantiles: ', statistics.quantiles(means))
 
         plt.hist(means)
         plt.show()
+
+    '''
+    Equalizes he amount of data for each of the stations
+    because of uneven amount of data
+    '''
 
     def sameAmountOfData(self):
         size = 10640
@@ -195,6 +239,7 @@ class ReadFile:
         for key in self.stationList.keys():
             dataLength = len(self.stationList[key])
 
+            # Checks there is at least 10.000 observations
             if dataLength < 10000:
                 continue
 
@@ -205,21 +250,21 @@ class ReadFile:
                         mean = item[1]
                         break
 
-                if dataLength > size:
-                    plotData.append(
-                        [key, float(self.stationList[key][dataLength - 1][2]) - (dataLength - size) * mean])
-                else:
-                    plotData.append(
-                        [key, float(self.stationList[key][dataLength - 1][2]) + (size - dataLength) * mean])
+                plotData.append(
+                    [key, float(self.stationList[key][dataLength - 1][2])
+                     + (size - dataLength) * mean])
             else:
                 plotData.append([key, self.stationList[key][dataLength - 1][2]])
 
+        # sorts the list from the 2 element
         plotData.sort(key=itemgetter(1))
 
         for data in plotData:
             x.append(data[0])
             y.append(data[1])
 
+        plt.xlabel('Average')
+        plt.ylabel('StationID')
         plt.barh(x, y)
         plt.show()
 
@@ -228,5 +273,5 @@ class ReadFile:
 
 
 if __name__ == "__main__":
-    startProgram = ReadFile()
+    startProgram = AnalyzeDMI()
     startProgram.main()
